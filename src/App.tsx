@@ -1,6 +1,7 @@
 import '@/App.css';
 import { Routes, Route } from 'react-router-dom';
 import LoginPage from './pages/login';
+// import { Toaster } from '@/components/ui/toaster';
 import BookingPage from './pages/booking';
 import { StoreProvider } from './lib/store';
 import AdminPage from './pages/admin';
@@ -8,6 +9,7 @@ import AdminPage from './pages/admin';
 function App() {
   return (
     <StoreProvider>
+      {/* <Toaster /> */}
       <Routes>
         <Route path='/login' element={<LoginPage />} />
         <Route path='/booking' element={<BookingPage />} />
