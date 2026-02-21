@@ -27,7 +27,6 @@ type Showtime = {
   showTime: string;
 };
 
-// Added Seat type based on your API response
 type Seat = {
   id: number;
   room: string;
@@ -43,13 +42,13 @@ type ApiResponse<T> = {
 };
 
 export default function BookingPage() {
-  const { isSeatBooked, addBooking, user } = useStore();
+  const { isSeatBooked, user } = useStore();
   const { toast } = useToast();
 
   // API Data State
   const [movies, setMovies] = useState<Movie[]>([]);
   const [schedules, setSchedules] = useState<Showtime[]>([]);
-  const [apiSeats, setApiSeats] = useState<Seat[]>([]); // New state for API seats
+  const [apiSeats, setApiSeats] = useState<Seat[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Selection State
@@ -82,14 +81,11 @@ export default function BookingPage() {
           api.get<ApiResponse<Showtime[]>>('/showtimes'),
         ]);
 
-        const fetchedMovies = movieRes.data.data;
-        const fetchedSchedules = scheduleRes.data.data;
+        setMovies(movieRes.data.data);
+        setSchedules(scheduleRes.data.data);
 
-        setMovies(fetchedMovies);
-        setSchedules(fetchedSchedules);
-
-        const firstScheduledMovie = fetchedMovies.find((m) =>
-          fetchedSchedules.some((s) => s.movieId === m.id),
+        const firstScheduledMovie = movieRes.data.data.find((m) =>
+          scheduleRes.data.data.some((s) => s.movieId === m.id),
         );
 
         if (firstScheduledMovie) {
@@ -115,7 +111,6 @@ export default function BookingPage() {
           `/seats/?room=${selectedRoom}`,
         );
         setApiSeats(res.data.data);
-        // Optional: clear selected seats when room changes to avoid ghost selections
         setSelectedSeats([]);
       } catch (err) {
         console.error('Failed to fetch seats', err);
@@ -156,6 +151,16 @@ export default function BookingPage() {
     return Array.from(new Set(filtered.map((s) => s.showTime.substring(0, 5))));
   }, [selectedMovie, selectedRoom, selectedDate, schedules]);
 
+  const currentShowtime = useMemo(() => {
+    return schedules.find(
+      (s) =>
+        String(s.movieId) === selectedMovie &&
+        s.room === selectedRoom &&
+        formatApiDate(s.showDate) === selectedDate &&
+        s.showTime.startsWith(selectedTime),
+    );
+  }, [selectedMovie, selectedRoom, selectedDate, selectedTime, schedules]);
+
   /* =====================
       UX: Auto-Select Defaults
   ===================== */
@@ -181,53 +186,69 @@ export default function BookingPage() {
       Booking Logic
   ===================== */
 
-  // Helper to find seat data from API response
-  const getSeatData = (seatId: string) => {
-    return apiSeats.find((s) => `${s.seatRow}${s.seatNumber}` === seatId);
+  const getSeatData = (seatLabel: string) => {
+    return apiSeats.find((s) => `${s.seatRow}${s.seatNumber}` === seatLabel);
   };
 
-  // Calculate total based on dynamic API prices
-  const totalPrice = selectedSeats.reduce((sum, seatId) => {
-    const seat = getSeatData(seatId);
+  const totalPrice = selectedSeats.reduce((sum, seatLabel) => {
+    const seat = getSeatData(seatLabel);
     return sum + (seat?.price || 0);
   }, 0);
 
-  const handleSeatClick = (seatId: string) => {
-    if (isSeatBooked(selectedRoom as Room, selectedDate, selectedTime, seatId))
+  const handleSeatClick = (seatLabel: string) => {
+    if (
+      isSeatBooked(selectedRoom as Room, selectedDate, selectedTime, seatLabel)
+    )
       return;
     setSelectedSeats((prev) =>
-      prev.includes(seatId)
-        ? prev.filter((id) => id !== seatId)
-        : [...prev, seatId],
+      prev.includes(seatLabel)
+        ? prev.filter((id) => id !== seatLabel)
+        : [...prev, seatLabel],
     );
   };
 
   const handleBooking = async () => {
-    if (selectedSeats.length === 0) return;
+    if (selectedSeats.length === 0 || !currentShowtime) return;
+
     setIsBooking(true);
-    await new Promise((r) => setTimeout(r, 800));
 
-    const movieTitle =
-      movies.find((m) => String(m.id) === selectedMovie)?.title || 'Unknown';
+    try {
+      const seatIds = selectedSeats
+        .map((label) => getSeatData(label)?.id)
+        .filter((id): id is number => id !== undefined);
 
-    addBooking({
-      username: user?.username || 'Guest',
-      movieTitle,
-      room: selectedRoom as Room,
-      date: selectedDate,
-      time: selectedTime,
-      seats: selectedSeats,
-      totalPrice,
-    });
+      // Changed 'showtime_id' to 'showtimeId' based on backend response error
+      const bookingPayload = {
+        showtimeId: currentShowtime.id,
+        totalPrice: totalPrice,
+        seatIds: seatIds,
+      };
 
-    toast({
-      title: 'Booking Confirmed!',
-      description: `Booked ${selectedSeats.length} seats for ${movieTitle}`,
-      className: 'bg-green-600 text-white border-none',
-    });
+      const response = await api.post<ApiResponse<any>>(
+        '/protected/bookings',
+        bookingPayload,
+      );
 
-    setSelectedSeats([]);
-    setIsBooking(false);
+      if (response.data.success) {
+        toast({
+          title: 'Booking Confirmed!',
+          description: `Enjoy your movie! ${selectedSeats.length} seats reserved.`,
+          className: 'bg-green-600 text-white border-none',
+        });
+        setSelectedSeats([]);
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Booking Failed',
+        description:
+          err.response?.data?.message || err.message || 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBooking(false);
+    }
   };
 
   if (loading) {
@@ -340,30 +361,29 @@ export default function BookingPage() {
                     {row}
                   </div>
                   {Array.from({ length: SEATS_PER_ROW }).map((_, i) => {
-                    const seatId = `${row}${i + 1}`;
-                    const seatData = getSeatData(seatId);
+                    const seatLabel = `${row}${i + 1}`;
+                    const seatData = getSeatData(seatLabel);
 
-                    // A seat is unavailable if it's booked OR if it doesn't exist in the API response
                     const isApiValid = !!seatData;
                     const booked = isSeatBooked(
                       selectedRoom as Room,
                       selectedDate,
                       selectedTime,
-                      seatId,
+                      seatLabel,
                     );
                     const disabled = booked || !isApiValid;
-                    const selected = selectedSeats.includes(seatId);
+                    const selected = selectedSeats.includes(seatLabel);
 
                     return (
                       <button
-                        key={seatId}
+                        key={seatLabel}
                         disabled={disabled}
                         title={
                           isApiValid
-                            ? `${seatId} - ${seatData.price} ks`
+                            ? `${seatLabel} - ${seatData.price} ks`
                             : 'Unavailable'
                         }
-                        onClick={() => handleSeatClick(seatId)}
+                        onClick={() => handleSeatClick(seatLabel)}
                         className={cn(
                           'w-9 h-9 rounded-t-lg transition-all flex items-center justify-center',
                           disabled
@@ -384,7 +404,6 @@ export default function BookingPage() {
         </Card>
       </div>
 
-      {/* Booking Summary Sidebar */}
       <div className='lg:col-span-4'>
         <Card className='glass border-primary/20 sticky top-24'>
           <CardHeader>
@@ -394,7 +413,7 @@ export default function BookingPage() {
             <div className='text-sm space-y-3'>
               <div className='flex justify-between'>
                 <span className='text-muted-foreground'>Movie</span>
-                <span>
+                <span className='font-medium'>
                   {movies.find((m) => String(m.id) === selectedMovie)?.title ||
                     '—'}
                 </span>
@@ -413,7 +432,7 @@ export default function BookingPage() {
 
             <div className='pt-4 border-t border-white/5'>
               <p className='text-[10px] font-bold text-muted-foreground mb-2'>
-                SEATS
+                SELECTED SEATS
               </p>
               <div className='flex flex-wrap gap-2'>
                 {selectedSeats.length > 0 ? (
@@ -427,7 +446,7 @@ export default function BookingPage() {
                   ))
                 ) : (
                   <span className='text-xs italic text-muted-foreground'>
-                    None
+                    None selected
                   </span>
                 )}
               </div>
@@ -437,14 +456,14 @@ export default function BookingPage() {
               <div className='flex justify-between items-baseline mb-6'>
                 <span className='text-muted-foreground'>Total Price</span>
                 <span className='text-3xl font-bold text-primary'>
-                  {totalPrice} ks
+                  {totalPrice.toLocaleString()} ks
                 </span>
               </div>
               <Button
                 className='w-full'
                 size='lg'
                 disabled={
-                  !selectedMovie || selectedSeats.length === 0 || isBooking
+                  !currentShowtime || selectedSeats.length === 0 || isBooking
                 }
                 onClick={handleBooking}
               >
