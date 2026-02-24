@@ -1,17 +1,24 @@
 import '@/App.css';
 import { Routes, Route } from 'react-router-dom';
 import LoginPage from './pages/login';
-// import { Toaster } from '@/components/ui/toaster';
 import BookingPage from './pages/booking';
-import { StoreProvider } from './lib/store';
 import AdminPage from './pages/admin';
+import { StoreProvider } from './lib/store';
+import { useEffect } from 'react';
+import { useUserStore } from './stores/user.store';
 
 function App() {
+  const fetchMe = useUserStore((state) => state.fetchMe);
+
+  // Fetch current user on app load
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
+
   return (
     <StoreProvider>
-      {/* <Toaster /> */}
       <Routes>
-        <Route path='/login' element={<LoginPage />} />
+        <Route path='/' element={<LoginPage />} />
         <Route path='/booking' element={<BookingPage />} />
         <Route path='/admin' element={<AdminPage />} />
       </Routes>

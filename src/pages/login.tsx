@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -14,12 +13,16 @@ import { Film, User, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import bgImage from '@/assets/images/cinema-bg.png';
 import api from '@/lib/api';
+import { useUserStore } from '@/stores/user.store';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
   const navigate = useNavigate();
+  const currentUser = useUserStore((state) => state.currentUser);
+  const setCurrentUser = useUserStore((state) => state.setCurrentUser);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -27,6 +30,13 @@ export default function LoginPage() {
     email: '',
     phone: '',
   });
+
+  // ⚡ Redirect if already logged in
+  useEffect(() => {
+    if (currentUser) {
+      currentUser.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
+    }
+  }, [currentUser, navigate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,11 +60,12 @@ export default function LoginPage() {
         setError(res.data.message);
         return;
       }
-      console.log(res.data);
+
+      const user = res.data.data;
+      setCurrentUser(user); // store user in Zustand
+
       if (isLogin) {
-        res.data.data?.role === 'ADMIN'
-          ? navigate('/admin')
-          : navigate('/booking');
+        user.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
       } else {
         setIsLogin(true);
       }
