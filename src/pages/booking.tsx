@@ -42,14 +42,16 @@ type ApiResponse<T> = {
 };
 
 export default function BookingPage() {
-  const { isSeatBooked, user } = useStore();
+  const { user } = useStore(); // Removed isSeatBooked, using API directly now
   const { toast } = useToast();
 
   // API Data State
   const [movies, setMovies] = useState<Movie[]>([]);
   const [schedules, setSchedules] = useState<Showtime[]>([]);
   const [apiSeats, setApiSeats] = useState<Seat[]>([]);
+  const [bookedSeatIds, setBookedSeatIds] = useState<number[]>([]); // New state for booked seats
   const [loading, setLoading] = useState(true);
+  const [isFetchingBooked, setIsFetchingBooked] = useState(false);
 
   // Selection State
   const [selectedMovie, setSelectedMovie] = useState<string>('');
@@ -162,6 +164,40 @@ export default function BookingPage() {
   }, [selectedMovie, selectedRoom, selectedDate, selectedTime, schedules]);
 
   /* =====================
+      Fetch Booked Seats
+  ===================== */
+  // New Effect: Whenever the specific showtime changes, fetch the already booked seats from the servlet.
+  useEffect(() => {
+    const fetchBookedSeats = async () => {
+      if (!currentShowtime) {
+        setBookedSeatIds([]);
+        return;
+      }
+
+      setIsFetchingBooked(true);
+      // Clear user's selected seats when the showtime context changes
+      setSelectedSeats([]);
+
+      try {
+        const res = await api.get<ApiResponse<number[]>>(
+          `/seats/booked?showtimeId=${currentShowtime.id}`,
+        );
+
+        if (res.data.success) {
+          setBookedSeatIds(res.data.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch booked seats', error);
+        setBookedSeatIds([]); // Fallback
+      } finally {
+        setIsFetchingBooked(false);
+      }
+    };
+
+    fetchBookedSeats();
+  }, [currentShowtime]);
+
+  /* =====================
       UX: Auto-Select Defaults
   ===================== */
   useEffect(() => {
@@ -196,10 +232,12 @@ export default function BookingPage() {
   }, 0);
 
   const handleSeatClick = (seatLabel: string) => {
-    if (
-      isSeatBooked(selectedRoom as Room, selectedDate, selectedTime, seatLabel)
-    )
-      return;
+    const seatData = getSeatData(seatLabel);
+    if (!seatData) return;
+
+    // Reject click if the seat ID exists in the booked seat IDs array
+    if (bookedSeatIds.includes(seatData.id)) return;
+
     setSelectedSeats((prev) =>
       prev.includes(seatLabel)
         ? prev.filter((id) => id !== seatLabel)
@@ -217,7 +255,6 @@ export default function BookingPage() {
         .map((label) => getSeatData(label)?.id)
         .filter((id): id is number => id !== undefined);
 
-      // Changed 'showtime_id' to 'showtimeId' based on backend response error
       const bookingPayload = {
         showtimeId: currentShowtime.id,
         totalPrice: totalPrice,
@@ -225,7 +262,7 @@ export default function BookingPage() {
       };
 
       const response = await api.post<ApiResponse<any>>(
-        '/protected/bookings',
+        '/bookings',
         bookingPayload,
       );
 
@@ -235,6 +272,9 @@ export default function BookingPage() {
           description: `Enjoy your movie! ${selectedSeats.length} seats reserved.`,
           className: 'bg-green-600 text-white border-none',
         });
+
+        // Refresh the booked seats state to visually disable them immediately after booking
+        setBookedSeatIds((prev) => [...prev, ...seatIds]);
         setSelectedSeats([]);
       } else {
         throw new Error(response.data.message);
@@ -353,7 +393,14 @@ export default function BookingPage() {
             </span>
           </div>
 
-          <CardContent className='pt-24 pb-12 overflow-x-auto'>
+          <CardContent
+            className={cn(
+              'pt-24 pb-12 overflow-x-auto transition-opacity',
+              isFetchingBooked
+                ? 'opacity-50 pointer-events-none'
+                : 'opacity-100',
+            )}
+          >
             <div className='min-w-150 flex flex-col items-center gap-2'>
               {ROWS.map((row) => (
                 <div key={row} className='flex items-center gap-3'>
@@ -365,13 +412,12 @@ export default function BookingPage() {
                     const seatData = getSeatData(seatLabel);
 
                     const isApiValid = !!seatData;
-                    const booked = isSeatBooked(
-                      selectedRoom as Room,
-                      selectedDate,
-                      selectedTime,
-                      seatLabel,
-                    );
-                    const disabled = booked || !isApiValid;
+
+                    // Checking against our newly fetched array of IDs
+                    const booked =
+                      isApiValid && bookedSeatIds.includes(seatData.id);
+
+                    const disabled = booked || !isApiValid || isFetchingBooked;
                     const selected = selectedSeats.includes(seatLabel);
 
                     return (
@@ -379,9 +425,11 @@ export default function BookingPage() {
                         key={seatLabel}
                         disabled={disabled}
                         title={
-                          isApiValid
-                            ? `${seatLabel} - ${seatData.price} ks`
-                            : 'Unavailable'
+                          !isApiValid
+                            ? 'Unavailable'
+                            : booked
+                              ? `${seatLabel} - Booked`
+                              : `${seatLabel} - ${seatData.price} ks`
                         }
                         onClick={() => handleSeatClick(seatLabel)}
                         className={cn(
@@ -463,7 +511,10 @@ export default function BookingPage() {
                 className='w-full'
                 size='lg'
                 disabled={
-                  !currentShowtime || selectedSeats.length === 0 || isBooking
+                  !currentShowtime ||
+                  selectedSeats.length === 0 ||
+                  isBooking ||
+                  isFetchingBooked
                 }
                 onClick={handleBooking}
               >

@@ -22,7 +22,7 @@ export default function LoginPage() {
 
   const navigate = useNavigate();
   const currentUser = useUserStore((state) => state.currentUser);
-  const setCurrentUser = useUserStore((state) => state.setCurrentUser);
+  const fetchMe = useUserStore((state) => state.fetchMe);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -62,7 +62,8 @@ export default function LoginPage() {
       }
 
       const user = res.data.data;
-      setCurrentUser(user); // store user in Zustand
+      // setCurrentUser(user); // store user in Zustand
+      fetchMe(); // fetch current user to update Zustand state
 
       if (isLogin) {
         user.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
