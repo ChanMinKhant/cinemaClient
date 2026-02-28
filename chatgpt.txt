@@ -1,0 +1,259 @@
+# Booking Page Refactor (Zustand)
+
+This document shows how to refactor the **Booking page** into clean, maintainable parts using **Zustand** stores you already have:
+
+* `seat.store.ts`
+* `showtime.store.ts`
+* `movie.store.ts`
+* `booking.store.ts`
+
+We will:
+
+1. Keep **all business logic in stores**
+2. Make the **Booking page UI-only**
+3. Split UI into small components
+
+---
+
+## 1️⃣ Folder Structure (Recommended)
+
+```
+src/
+├─ stores/
+│  ├─ seat.store.ts
+│  ├─ showtime.store.ts
+│  ├─ movie.store.ts
+│  └─ booking.store.ts
+│
+├─ components/booking/
+│  ├─ MovieSelect.tsx
+│  ├─ ShowtimeSelect.tsx
+│  ├─ SeatGrid.tsx
+│  ├─ BookingSummary.tsx
+│
+├─ pages/
+│  └─ BookingPage.tsx
+```
+
+---
+
+## 2️⃣ booking.store.ts (Glue Store)
+
+This store connects **movie → showtime → seat** selection.
+
+```ts
+import { create } from 'zustand';
+import type { Room } from './seat.store';
+
+interface BookingState {
+  movieId?: number;
+  showtimeId?: number;
+  room?: Room;
+
+  setMovie: (movieId: number) => void;
+  setShowtime: (showtimeId: number, room: Room) => void;
+  resetBooking: () => void;
+}
+
+export const useBookingStore = create<BookingState>((set) => ({
+  movieId: undefined,
+  showtimeId: undefined,
+  room: undefined,
+
+  setMovie: (movieId) =>
+    set({ movieId, showtimeId: undefined, room: undefined }),
+
+  setShowtime: (showtimeId, room) =>
+    set({ showtimeId, room }),
+
+  resetBooking: () =>
+    set({ movieId: undefined, showtimeId: undefined, room: undefined }),
+}));
+```
+
+---
+
+## 3️⃣ MovieSelect.tsx
+
+Only shows movies that **have showtimes**.
+
+```tsx
+import { useEffect } from 'react';
+import { useMovieStore } from '@/stores/movie.store';
+import { useShowtimeStore } from '@/stores/showtime.store';
+import { useBookingStore } from '@/stores/booking.store';
+
+export default function MovieSelect() {
+  const { movies, fetchMovies } = useMovieStore();
+  const { showtimes, fetchShowtimes } = useShowtimeStore();
+  const setMovie = useBookingStore((s) => s.setMovie);
+
+  useEffect(() => {
+    fetchMovies();
+    fetchShowtimes();
+  }, []);
+
+  const movieIdsWithShowtimes = new Set(showtimes.map((s) => s.movieId));
+
+  return (
+    <select onChange={(e) => setMovie(Number(e.target.value))}>
+      <option value="">Select movie</option>
+      {movies
+        .filter((m) => movieIdsWithShowtimes.has(m.id))
+        .map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.title}
+          </option>
+        ))}
+    </select>
+  );
+}
+```
+
+---
+
+## 4️⃣ ShowtimeSelect.tsx
+
+Shows date + time formatted nicely.
+
+```tsx
+import { format } from 'date-fns';
+import { useShowtimeStore } from '@/stores/showtime.store';
+import { useBookingStore } from '@/stores/booking.store';
+
+export default function ShowtimeSelect() {
+  const { showtimes } = useShowtimeStore();
+  const { movieId, setShowtime } = useBookingStore();
+
+  if (!movieId) return null;
+
+  return (
+    <div>
+      {showtimes
+        .filter((s) => s.movieId === movieId)
+        .map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setShowtime(s.id, s.room)}
+          >
+            {format(new Date(s.showDate), 'yyyy-MM-dd')} · {s.showTime}
+          </button>
+        ))}
+    </div>
+  );
+}
+```
+
+---
+
+## 5️⃣ SeatGrid.tsx
+
+Seat logic is **100% in seat.store**.
+
+```tsx
+import { useEffect } from 'react';
+import { useSeatStore } from '@/stores/seat.store';
+import { useBookingStore } from '@/stores/booking.store';
+
+export default function SeatGrid() {
+  const { room, showtimeId } = useBookingStore();
+  const {
+    seats,
+    bookedSeatIds,
+    selectedSeats,
+    fetchSeats,
+    fetchBookedSeats,
+    selectSeat,
+  } = useSeatStore();
+
+  useEffect(() => {
+    if (room) fetchSeats(room);
+    if (showtimeId) fetchBookedSeats(showtimeId);
+  }, [room, showtimeId]);
+
+  if (!room || !showtimeId) return null;
+
+  return (
+    <div className="grid">
+      {seats.map((seat) => {
+        const booked = bookedSeatIds.includes(seat.id);
+        const selected = selectedSeats.includes(seat.id);
+
+        return (
+          <button
+            key={seat.id}
+            disabled={booked}
+            className={selected ? 'selected' : ''}
+            onClick={() => selectSeat(seat.id)}
+          >
+            {seat.seatRow}{seat.seatNumber}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+```
+
+---
+
+## 6️⃣ BookingSummary.tsx
+
+```tsx
+import { useSeatStore } from '@/stores/seat.store';
+
+export default function BookingSummary() {
+  const { seats, selectedSeats } = useSeatStore();
+
+  const selected = seats.filter((s) => selectedSeats.includes(s.id));
+  const total = selected.reduce((sum, s) => sum + s.price, 0);
+
+  return (
+    <div>
+      <p>Seats: {selected.map((s) => `${s.seatRow}${s.seatNumber}`).join(', ')}</p>
+      <p>Total: {total} Ks</p>
+    </div>
+  );
+}
+```
+
+---
+
+## 7️⃣ BookingPage.tsx (Clean & Small)
+
+```tsx
+import MovieSelect from '@/components/booking/MovieSelect';
+import ShowtimeSelect from '@/components/booking/ShowtimeSelect';
+import SeatGrid from '@/components/booking/SeatGrid';
+import BookingSummary from '@/components/booking/BookingSummary';
+
+export default function BookingPage() {
+  return (
+    <div className="space-y-4">
+      <MovieSelect />
+      <ShowtimeSelect />
+      <SeatGrid />
+      <BookingSummary />
+    </div>
+  );
+}
+```
+
+---
+
+## ✅ Result
+
+✔ Booking page has **no business logic**
+✔ Zustand stores are **single responsibility**
+✔ Easy to test & maintain
+✔ Mobile-friendly refactor-ready
+
+---
+
+If you want next:
+
+* 🎯 **Confirm booking API flow**
+* 💳 **Payment integration**
+* 📱 **Responsive seat layout**
+
+Just tell me 👍

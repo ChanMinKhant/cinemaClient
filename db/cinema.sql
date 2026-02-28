@@ -61,8 +61,20 @@ CREATE TABLE booking_seats (
     FOREIGN KEY (seat_id) REFERENCES seats(id)
 );
 
--- tranaction for payment
-
+-- DEPOSITS TABLE
+CREATE TABLE deposits (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    amount BIGINT NOT NULL,
+    payment_method ENUM('Wave Pay', 'KBZ Pay', 'AYA Pay', 'uabpay') NOT NULL,
+    sender_name VARCHAR(255) NOT NULL,
+    transaction_last_6 VARCHAR(6) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    admin_note VARCHAR(255), -- Reason for rejection if applicable
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
 -- create_booking
 -- CALL create_booking(1, 3, '5,6,7');
@@ -144,6 +156,28 @@ END$$
 
 DELIMITER ;
 
+-- Validate User Balance Before Booking
+DELIMITER $$
+
+CREATE TRIGGER trg_validate_balance_before_booking
+BEFORE INSERT ON bookings
+FOR EACH ROW
+BEGIN
+    DECLARE v_current_balance BIGINT;
+
+    -- Get the user's current balance
+    SELECT balance INTO v_current_balance 
+    FROM users 
+    WHERE id = NEW.user_id;
+
+    -- If balance is less than the booking price, throw an error
+    IF v_current_balance < NEW.total_price THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Transaction Rejected: Insufficient balance in user account.';
+    END IF;
+END$$
+
+DELIMITER ;
 
 -- Deduct User Balance
 DELIMITER $$

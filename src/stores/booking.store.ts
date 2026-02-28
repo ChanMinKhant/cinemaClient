@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '@/lib/api';
+import { toast } from 'react-toastify';
 
 export interface Booking {
   id: number;
@@ -48,13 +49,17 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const res = await api.post('/bookings', payload); // POST /api/bookings
+      console.log(res);
+      
       if (res.data.success) {
         await get().fetchBookings(); // refresh bookings after creation
       } else {
         set({ error: res.data.message || 'Failed to create booking' });
       }
     } catch (err: any) {
-      set({ error: err.message || 'Network error' });
+      console.log(err.response?.data?.message);
+      toast.error(err.response?.data?.message || "Network error")
+      set({ error: err.response?.data?.message || 'Network error' });
     } finally {
       set({ loading: false });
     }
