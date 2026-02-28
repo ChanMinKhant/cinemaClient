@@ -8,7 +8,6 @@ CREATE TABLE users (
     balance BIGINT DEFAULT 0,
     role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- MOVIES TABLE
 CREATE TABLE movies (

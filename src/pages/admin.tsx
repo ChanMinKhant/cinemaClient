@@ -1,10 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import AdminStats from './components/AdminStats';
-import DashboardTab from './components/DashboardTab';
-import MoviesTab from './components/MoviesTab';
-import SchedulesTab from './components/SchedulesTab';
-import BookingsTab from './components/BookingsTab';
+import AdminStats from './components/admin/AdminStats';
+import DashboardTab from './components/admin/DashboardTab';
+import MoviesTab from './components/admin/MoviesTab';
+import SchedulesTab from './components/admin/SchedulesTab';
+import BookingsTab from './components/admin/BookingsTab';
 
 export default function AdminPage() {
   return (
