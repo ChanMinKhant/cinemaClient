@@ -42,7 +42,6 @@ type ApiResponse<T> = {
 };
 
 export default function BookingPage() {
-  const { user } = useStore(); // Removed isSeatBooked, using API directly now
   const { toast } = useToast();
 
   // API Data State

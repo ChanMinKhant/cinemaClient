@@ -1,7 +1,7 @@
 import '@/App.css';
 import { Routes, Route } from 'react-router-dom';
 import LoginPage from './pages/login';
-import BookingPage from './pages/booking2';
+import BookingPage from './pages/booking';
 import AdminPage from './pages/admin';
 import { StoreProvider } from './lib/store';
 import { useEffect } from 'react';
