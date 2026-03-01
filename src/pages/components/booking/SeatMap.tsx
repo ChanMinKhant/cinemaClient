@@ -9,10 +9,12 @@ interface SeatMapProps {
   myBookedSeatIds: number[];
   selectedSeats: number[];
   isLoading: boolean;
+  isAdmin: boolean;
   onSeatClick: (seatId: number) => void;
+  onAdminSeatClick?: (seat: Seat, isBooked: boolean) => void;
 }
 
-export const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+export const ROWS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 export const SEATS_PER_ROW = 10;
 
 export function SeatMap({
@@ -21,7 +23,9 @@ export function SeatMap({
   myBookedSeatIds,
   selectedSeats,
   isLoading,
+  isAdmin,
   onSeatClick,
+  onAdminSeatClick,
 }: SeatMapProps) {
   const getSeatData = (row: string, num: number) => {
     return seats.find((s) => s.seatRow === row && s.seatNumber === num);
@@ -44,9 +48,7 @@ export function SeatMap({
       >
         <div className='min-w-[600px] flex flex-col items-center gap-2'>
           
-          {/* --- COLUMN NUMBERS HEADER --- */}
           <div className='flex items-center gap-3 mb-2'>
-            {/* Empty space for the row letter column */}
             <div className='w-5' /> 
             {Array.from({ length: SEATS_PER_ROW }).map((_, i) => (
               <div 
@@ -58,7 +60,6 @@ export function SeatMap({
             ))}
           </div>
 
-          {/* Seat Grid */}
           {ROWS.map((row) => (
             <div key={row} className='flex items-center gap-3'>
               <div className='w-5 text-center text-[10px] text-muted-foreground'>
@@ -72,8 +73,10 @@ export function SeatMap({
                 const isApiValid = !!seatData;
                 const booked = isApiValid && bookedSeatIds.includes(seatData.id);
                 const myBooked = isApiValid && myBookedSeatIds.includes(seatData.id);
-                const disabled = booked || !isApiValid || isLoading;
                 const selected = isApiValid && selectedSeats.includes(seatData.id);
+                
+                // Admin is never disabled unless the seat doesn't exist at all
+                const disabled = !isApiValid || isLoading;
 
                 return (
                   <button
@@ -88,15 +91,29 @@ export function SeatMap({
                             ? `${seatLabel} - Booked`
                             : `${seatLabel} - ${seatData.price} ks`
                     }
-                    onClick={() => seatData && onSeatClick(seatData.id)}
+                    onClick={() => {
+                      if (!seatData) return;
+                      // If it's already selected and we click again, just unselect it (standard behavior)
+                      if (selected) {
+                        onSeatClick(seatData.id);
+                        return;
+                      }
+
+                      // Otherwise, show Admin Modal
+                      if (isAdmin && onAdminSeatClick) {
+                        onAdminSeatClick(seatData, booked);
+                      } else {
+                        if (!booked) onSeatClick(seatData.id);
+                      }
+                    }}
                     className={cn(
                       'w-9 h-9 rounded-t-lg transition-all flex items-center justify-center',
                       !isApiValid
                         ? 'bg-white/5 text-white/10 cursor-not-allowed'
                         : myBooked
-                          ? 'bg-blue-500/80 text-white cursor-not-allowed border border-blue-400/50 shadow-[0_0_10px_rgba(59,130,246,0.5)]'
+                          ? 'bg-blue-500/80 text-white border border-blue-400/50 shadow-[0_0_10px_rgba(59,130,246,0.5)]'
                           : booked
-                            ? 'bg-white/5 text-white/10 cursor-not-allowed'
+                            ? 'bg-white/5 text-white/10'
                             : selected
                               ? 'bg-primary text-black scale-110 shadow-lg'
                               : 'bg-white/10 text-white/60 hover:bg-white/20',

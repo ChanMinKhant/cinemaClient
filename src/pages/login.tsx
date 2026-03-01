@@ -90,7 +90,7 @@ export default function LoginPage() {
       <div className='lg:hidden flex items-center justify-center py-6'>
         <Film className='w-10 h-10 text-primary mr-2' />
         <h1 className='text-2xl font-bold'>
-          Lumina <span className='text-primary'>Cinema</span>
+          ABC <span className='text-primary'>Cinema</span>
         </h1>
       </div>
 
@@ -99,10 +99,10 @@ export default function LoginPage() {
         <div className='hidden lg:flex flex-col justify-center px-20 text-white'>
           <Film className='w-16 h-16 text-primary mb-6' />
           <h1 className='text-5xl font-bold mb-4'>
-            Lumina <span className='text-primary'>Cinema</span>
+            ABC <span className='text-primary'>Cinema</span>
           </h1>
           <p className='text-lg text-muted-foreground max-w-md'>
-            Premium seating, immersive sound, unforgettable experiences.
+            Premium seatings, unforgettable experiences.
           </p>
         </div>
 

@@ -19,8 +19,8 @@ interface BookingFiltersProps {
   onSelectDate: (val: string) => void;
 
   availableRooms: Room[];
-  selectedRoom: string;
-  onSelectRoom: (val: string) => void;
+  selectedRoom: Room | '';
+  onSelectRoom: (val: Room) => void;
 
   availableTimes: string[];
   selectedTime: string;
@@ -104,7 +104,7 @@ export function BookingFilters({
           </label>
           <Select
             value={selectedRoom}
-            onValueChange={onSelectRoom}
+            onValueChange={(val) => onSelectRoom(val as Room)}
             disabled={!selectedDate}
           >
             <SelectTrigger className="bg-background/50 border-white/10">
