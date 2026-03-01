@@ -65,7 +65,7 @@ export default function UserBookingsTab() {
       `}</style>
 
       {/* --- NEW BACK BUTTON SECTION --- */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center mt-5 justify-between">
         <Link 
           to="/booking" 
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-primary transition-colors group"

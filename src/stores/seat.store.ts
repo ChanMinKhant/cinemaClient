@@ -15,12 +15,14 @@ export interface Seat {
 interface SeatStore {
   seats: Seat[];
   bookedSeatIds: number[];
+  myBookedSeatIds: number[]; // <-- ADDED THIS
   selectedSeats: number[];
   loading: boolean;
   error: string | null;
 
   fetchSeats: (room?: Room) => Promise<void>;
   fetchBookedSeats: (showtimeId: number) => Promise<void>;
+  fetchMyBookedSeats: (showtimeId: number) => Promise<void>; // <-- ADDED THIS
   selectSeat: (seatId: number) => void;
   clearSelection: () => void;
 
@@ -32,6 +34,7 @@ interface SeatStore {
 export const useSeatStore = create<SeatStore>((set, get) => ({
   seats: [],
   bookedSeatIds: [],
+  myBookedSeatIds: [], // <-- ADDED THIS
   selectedSeats: [],
   loading: false,
   error: null,
@@ -76,6 +79,28 @@ export const useSeatStore = create<SeatStore>((set, get) => ({
     }
   },
 
+  // <-- ADDED THIS FUNCTION
+  fetchMyBookedSeats: async (showtimeId) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await api.get<{
+        success: boolean;
+        message: string;
+        data: number[];
+      }>('/seats/my-booking', {
+        params: { showtimeId },
+      });
+      if (res.data.success) {
+        set({ myBookedSeatIds: res.data.data, loading: false });
+      } else {
+        set({ error: res.data.message, loading: false });
+      }
+    } catch (err) {
+      const error = err as AxiosError;
+      set({ error: error.message, loading: false });
+    }
+  },
+
   selectSeat: (seatId) => {
     set((state) => {
       if (state.selectedSeats.includes(seatId)) {
@@ -91,6 +116,7 @@ export const useSeatStore = create<SeatStore>((set, get) => ({
   clearSelection: () => set({ selectedSeats: [] }),
 
   addSeat: async (seat) => {
+    // ... remaining code stays exactly the same ...
     set({ loading: true, error: null });
     try {
       const res = await api.post('/seats', seat);
@@ -108,6 +134,7 @@ export const useSeatStore = create<SeatStore>((set, get) => ({
   },
 
   updateSeat: async (seat) => {
+    // ... remaining code stays exactly the same ...
     if (!seat.id) {
       set({ error: 'Seat ID required' });
       return;
@@ -129,6 +156,7 @@ export const useSeatStore = create<SeatStore>((set, get) => ({
   },
 
   deleteSeat: async (id) => {
+    // ... remaining code stays exactly the same ...
     set({ loading: true, error: null });
     try {
       const res = await api.delete(`/seats/${id}`);

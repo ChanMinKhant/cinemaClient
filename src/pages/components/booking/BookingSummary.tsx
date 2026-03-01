@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Wallet, History, LogOut } from 'lucide-react'; 
+import { Loader2, Plus, Wallet, History, LogOut, ShieldCheck } from 'lucide-react'; 
 import type { Seat } from '@/stores/seat.store';
 import { useUserStore } from '@/stores/user.store';
 import { Link, useNavigate } from 'react-router-dom'; 
@@ -45,9 +45,9 @@ export function BookingSummary({
     try {
       const res = await api.post('/auth/logout');
       if (res.data.success) {
-        setCurrentUser(null); // Clear store
+        setCurrentUser(null);
         toast.success("Logged out successfully");
-        navigate('/login'); // Redirect to login
+        navigate('/login');
       }
     } catch (err) {
       toast.error("Logout failed");
@@ -56,20 +56,36 @@ export function BookingSummary({
 
   return (
     <Card className='glass border-primary/20 sticky top-24 shadow-2xl overflow-hidden'>
-      {/* --- LOGOUT SECTION --- */}
+      {/* --- ACCOUNT & ADMIN SECTION --- */}
       <div className="bg-white/[0.03] border-b border-white/5 px-4 py-2 flex justify-between items-center">
         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">
           Account: <span className="text-slate-300">{currentUser?.username || 'Guest'}</span>
         </span>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={handleLogout}
-          className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-red-500/70 hover:text-red-500 hover:bg-red-500/10 gap-1.5 transition-all"
-        >
-          <LogOut size={12} />
-          Logout
-        </Button>
+        
+        <div className="flex items-center gap-2">
+          {/* Admin Button - Only visible if role is admin */}
+          {currentUser?.role === 'admin' && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate('/admin')}
+              className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-amber-500/70 hover:text-amber-400 hover:bg-amber-500/10 gap-1.5 transition-all border border-amber-500/20"
+            >
+              <ShieldCheck size={12} />
+              Admin
+            </Button>
+          )}
+
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleLogout}
+            className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-red-500/70 hover:text-red-500 hover:bg-red-500/10 gap-1.5 transition-all"
+          >
+            <LogOut size={12} />
+            Logout
+          </Button>
+        </div>
       </div>
 
       <CardHeader>

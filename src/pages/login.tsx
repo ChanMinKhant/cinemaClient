@@ -34,7 +34,8 @@ export default function LoginPage() {
   // ⚡ Redirect if already logged in
   useEffect(() => {
     if (currentUser) {
-      currentUser.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
+
+      currentUser.role === 'admin' ? navigate('/admin') : navigate('/booking');
     }
   }, [currentUser, navigate]);
 

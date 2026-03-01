@@ -21,18 +21,22 @@ export default function BookingPage() {
 
   // Stores
   const { movies, fetchMovies, loading: moviesLoading } = useMovieStore();
-  const { showtimes, fetchShowtimes, loading: showtimesLoading } =
-    useShowtimeStore();
+  const { showtimes, fetchShowtimes, loading: showtimesLoading } = useShowtimeStore();
+  
+  // Updated SeatStore extraction to include our new states/methods
   const {
     seats,
     bookedSeatIds,
+    myBookedSeatIds,
     selectedSeats,
     fetchSeats,
     fetchBookedSeats,
+    fetchMyBookedSeats,
     selectSeat,
     clearSelection,
     loading: seatsLoading,
   } = useSeatStore();
+  
   const { createBooking, loading: isBooking } = useBookingStore();
 
   // Local state
@@ -184,10 +188,12 @@ export default function BookingPage() {
 
   useEffect(() => {
     if (currentShowtime) {
+      // Fetch both general booked seats and specifically the user's booked seats
       fetchBookedSeats(currentShowtime.id);
+      fetchMyBookedSeats(currentShowtime.id);
       clearSelection();
     }
-  }, [currentShowtime, fetchBookedSeats, clearSelection]);
+  }, [currentShowtime, fetchBookedSeats, fetchMyBookedSeats, clearSelection]);
 
   /* =====================================
       BOOKING
@@ -211,7 +217,9 @@ export default function BookingPage() {
 
     if (!useBookingStore.getState().error) {
       toast.success('Booking Confirmed!');
+      // Re-fetch both lists so the map updates to show their newly booked seats in the correct color
       fetchBookedSeats(currentShowtime.id);
+      fetchMyBookedSeats(currentShowtime.id);
       currentUser.balance -= totalPrice;
       clearSelection();
     }
@@ -257,6 +265,7 @@ export default function BookingPage() {
         <SeatMap
           seats={seats}
           bookedSeatIds={bookedSeatIds}
+          myBookedSeatIds={myBookedSeatIds} // Passed down to highlight user's seats
           selectedSeats={selectedSeats}
           isLoading={seatsLoading}
           onSeatClick={(id) =>
