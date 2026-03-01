@@ -9,8 +9,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Film, User, Loader2 } from 'lucide-react';
+import { Film, User, Loader2, Mail, Phone, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
 import bgImage from '@/assets/images/cinema-bg.png';
 import api from '@/lib/api';
 import { useUserStore } from '@/stores/user.store';
@@ -18,7 +21,7 @@ import { useUserStore } from '@/stores/user.store';
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const navigate = useNavigate();
   const currentUser = useUserStore((state) => state.currentUser);
@@ -31,48 +34,101 @@ export default function LoginPage() {
     phone: '',
   });
 
-  // ⚡ Redirect if already logged in
   useEffect(() => {
     if (currentUser) {
-
-      currentUser.role === 'admin' ? navigate('/admin') : navigate('/booking');
+      currentUser.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
     }
   }, [currentUser, navigate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError('');
+    // Clear specific error when user starts typing again
+    if (errors[e.target.name]) {
+      setErrors((prev) => {
+        const newErrs = { ...prev };
+        delete newErrs[e.target.name];
+        return newErrs;
+      });
+    }
+  };
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+
+    // Username: 3-20 chars
+    if (!formData.username) {
+      newErrors.username = 'Username is required';
+    } else if (formData.username.length < 3) {
+      newErrors.username = 'Minimum 3 characters required';
+    } else if (formData.username.length > 20) {
+      newErrors.username = 'Maximum 20 characters allowed';
+    }
+
+    // Password: Min 6 chars
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+
+    // Registration Only fields
+    if (!isLogin) {
+      // Email check
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!formData.email) {
+        newErrors.email = 'Email is required';
+      } else if (!emailRegex.test(formData.email)) {
+        newErrors.email = 'Please enter a valid email format';
+      }
+
+      // Phone check (Optional field logic: only validate if provided)
+      if (formData.phone) {
+        const phoneRegex = /^\d{10,15}$/;
+        if (!phoneRegex.test(formData.phone)) {
+          newErrors.phone = 'Phone must be 10 to 15 digits';
+        }
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validate()) {
+      return; // Stop if validation fails
+    }
+
     setIsLoading(true);
-    setError('');
 
     try {
-      const res = await api.post(
-        `/auth/${isLogin ? 'login' : 'register'}`,
-        isLogin
-          ? { username: formData.username, password: formData.password }
-          : formData,
-      );
+      const payload = isLogin 
+        ? { username: formData.username, password: formData.password } 
+        : formData;
 
-      if (!res.data.success) {
-        setError(res.data.message);
+      const res = await api.post(`/auth/${isLogin ? 'login' : 'register'}`, payload);
+
+      if (res.data.success === false) {
+        toast.error(res.data.message || 'Operation failed');
         return;
       }
 
-      const user = res.data.data;
-      // setCurrentUser(user); // store user in Zustand
-      fetchMe(); // fetch current user to update Zustand state
-
       if (isLogin) {
+        toast.success('Welcome back!');
+        await fetchMe();
+        const user = res.data.data;
         user.role === 'ADMIN' ? navigate('/admin') : navigate('/booking');
       } else {
+        toast.success('Registration successful! Please login.');
         setIsLogin(true);
+        setFormData({ username: '', password: '', email: '', phone: '' });
+        setErrors({});
       }
-    } catch {
-      setError('Server connection failed');
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Server connection failed';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -80,13 +136,15 @@ export default function LoginPage() {
 
   return (
     <div className='min-h-screen relative bg-background'>
-      {/* Background (desktop only) */}
+      <ToastContainer position="top-right" theme="dark" autoClose={3000} />
+
+      {/* Background Layer */}
       <div className='hidden lg:block absolute inset-0 -z-10'>
-        <img src={bgImage} className='w-full h-full object-cover opacity-90' />
+        <img src={bgImage} className='w-full h-full object-cover opacity-90' alt="cinema-bg" />
         <div className='absolute inset-0 bg-background/80' />
       </div>
 
-      {/* Mobile Header */}
+      {/* Branding for Mobile */}
       <div className='lg:hidden flex items-center justify-center py-6'>
         <Film className='w-10 h-10 text-primary mr-2' />
         <h1 className='text-2xl font-bold'>
@@ -95,7 +153,7 @@ export default function LoginPage() {
       </div>
 
       <div className='flex min-h-screen lg:grid lg:grid-cols-2'>
-        {/* Desktop Branding */}
+        {/* Branding for Desktop */}
         <div className='hidden lg:flex flex-col justify-center px-20 text-white'>
           <Film className='w-16 h-16 text-primary mb-6' />
           <h1 className='text-5xl font-bold mb-4'>
@@ -106,91 +164,107 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Auth Card */}
-        <div className='flex items-center justify-center w-full px-4 sm:px-6'>
-          <Card className='w-full max-w-sm sm:max-w-md bg-black/50 backdrop-blur-lg border-white/10'>
-            <CardHeader className='space-y-1 text-center'>
-              <CardTitle className='text-xl sm:text-2xl'>
+        {/* Form Container */}
+        <div className='flex items-center justify-center w-full px-4'>
+          <Card className='w-full max-w-md bg-black/50 backdrop-blur-xl border-white/10'>
+            <CardHeader className='text-center'>
+              <CardTitle className='text-2xl'>
                 {isLogin ? 'Welcome Back' : 'Create Account'}
               </CardTitle>
-              <CardDescription className='text-sm'>
-                {isLogin ? 'Login to continue' : 'Register to book movies'}
+              <CardDescription>
+                {isLogin ? 'Login to your account' : 'Join us to start booking'}
               </CardDescription>
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleSubmit} className='space-y-4'>
-                <div className='space-y-1'>
-                  <Label>Username</Label>
+              <form onSubmit={handleSubmit} className='space-y-4' noValidate>
+                {/* Username Field */}
+                <div className='space-y-1.5'>
+                  <Label className={errors.username ? 'text-red-500' : ''}>Username</Label>
                   <div className='relative'>
                     <User className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
                     <Input
                       name='username'
-                      className='pl-9'
+                      className={`pl-9 ${errors.username ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                       value={formData.username}
                       onChange={handleInputChange}
-                      required
                     />
                   </div>
+                  {errors.username && <p className='text-xs text-red-500 font-medium'>{errors.username}</p>}
                 </div>
 
                 {!isLogin && (
                   <>
-                    <div className='space-y-1'>
-                      <Label>Email</Label>
-                      <Input
-                        name='email'
-                        type='email'
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        required
-                      />
+                    {/* Email Field */}
+                    <div className='space-y-1.5'>
+                      <Label className={errors.email ? 'text-red-500' : ''}>Email</Label>
+                      <div className='relative'>
+                        <Mail className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
+                        <Input
+                          name='email'
+                          type='email'
+                          className={`pl-9 ${errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                          value={formData.email}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      {errors.email && <p className='text-xs text-red-500 font-medium'>{errors.email}</p>}
                     </div>
 
-                    <div className='space-y-1'>
-                      <Label>Phone</Label>
-                      <Input
-                        name='phone'
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                      />
+                    {/* Phone Field */}
+                    <div className='space-y-1.5'>
+                      <Label className={errors.phone ? 'text-red-500' : ''}>Phone</Label>
+                      <div className='relative'>
+                        <Phone className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
+                        <Input
+                          name='phone'
+                          className={`pl-9 ${errors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      {errors.phone && <p className='text-xs text-red-500 font-medium'>{errors.phone}</p>}
                     </div>
                   </>
                 )}
 
-                <div className='space-y-1'>
-                  <Label>Password</Label>
-                  <Input
-                    name='password'
-                    type='password'
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    required
-                  />
+                {/* Password Field */}
+                <div className='space-y-1.5'>
+                  <Label className={errors.password ? 'text-red-500' : ''}>Password</Label>
+                  <div className='relative'>
+                    <Lock className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
+                    <Input
+                      name='password'
+                      type='password'
+                      className={`pl-9 ${errors.password ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                      value={formData.password}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  {errors.password && <p className='text-xs text-red-500 font-medium'>{errors.password}</p>}
                 </div>
-
-                {error && (
-                  <p className='text-sm text-destructive bg-destructive/10 p-2 rounded'>
-                    {error}
-                  </p>
-                )}
 
                 <Button
                   type='submit'
-                  className='w-full h-11 text-base'
+                  className='w-full h-11 mt-2 transition-all duration-200'
                   disabled={isLoading}
                 >
-                  {isLoading && (
+                  {isLoading ? (
                     <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                  ) : (
+                    isLogin ? 'Login' : 'Register'
                   )}
-                  {isLogin ? 'Login' : 'Register'}
                 </Button>
 
-                <div className='text-center'>
+                <div className='text-center pt-2'>
                   <button
                     type='button'
-                    onClick={() => setIsLogin(!isLogin)}
-                    className='text-sm text-primary hover:underline'
+                    onClick={() => {
+                      setIsLogin(!isLogin);
+                      setFormData({ username: '', password: '', email: '', phone: '' });
+                      setErrors({});
+                    }}
+                    className='text-sm text-primary hover:underline transition-colors'
                   >
                     {isLogin
                       ? "Don't have an account? Register"

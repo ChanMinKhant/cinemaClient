@@ -23,7 +23,7 @@ interface UserStore {
 
 export const useUserStore = create<UserStore>((set) => ({
   currentUser: null,
-  loading: false,
+  loading: true,
   error: null,
 
   fetchMe: async () => {

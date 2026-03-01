@@ -19,7 +19,7 @@ export default function AdminPage() {
   useEffect(() => {
     console.log(loading);
     
-    if (loading || !currentUser) return;
+    if (loading) return;
     console.log(currentUser);
     
     if (!currentUser || currentUser.role !== 'admin') {

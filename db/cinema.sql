@@ -8,6 +8,7 @@ CREATE TABLE users (
     balance BIGINT DEFAULT 0,
     role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- MOVIES TABLE
 CREATE TABLE movies (
@@ -24,6 +25,7 @@ CREATE TABLE showtimes (
     room CHAR(1) NOT NULL,          -- Room A/B/C
     show_date DATE NOT NULL,
     show_time TIME NOT NULL,
+    isActive BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (room, show_date, show_time),
     FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
 );

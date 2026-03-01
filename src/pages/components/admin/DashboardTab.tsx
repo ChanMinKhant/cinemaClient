@@ -108,7 +108,7 @@ export default function DashboardTab() {
                     />
                     <XAxis
                       dataKey="shortName"
-                      angle={-30}
+                      angle={0}
                       textAnchor="end"
                       interval={0}
                       height={70}

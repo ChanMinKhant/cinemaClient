@@ -6,10 +6,19 @@ import AdminPage from './pages/admin';
 import { useEffect } from 'react';
 import { useUserStore } from './stores/user.store';
 import { Loader2 } from 'lucide-react';
-import { toast, ToastContainer, Zoom } from 'react-toastify';
+import { ToastContainer, Zoom } from 'react-toastify';
 import UserBookingsTab from './pages/UserBookingsTab';
 import DepositPage from './pages/DepositPage';
 import DepositHistoryPage from './pages/DepositHistoryPage';
+import NotFoundPage from './pages/NotFoundPage';
+
+// import { lazy } from 'react';
+// const LoginPage = lazy(() => import('./pages/login'));
+// const BookingPage = lazy(() => import('./pages/booking'));
+// const AdminPage = lazy(() => import('./pages/admin'));
+// const UserBookingsTab =  lazy(() => import( './pages/UserBookingsTab'));
+// const DepositPage = lazy(() => import('./pages/DepositPage'));
+// const DepositHistoryPage = lazy(() => import('./pages/DepositHistoryPage'));
 
 function App() {
   const fetchMe = useUserStore((state) => state.fetchMe);
@@ -18,7 +27,6 @@ function App() {
   useEffect(() => {
     fetchMe();
   }, [fetchMe]);
-
   if (loading) {
     return (
       <div className='h-screen flex items-center justify-center'>
@@ -36,6 +44,7 @@ function App() {
         newestOnTop={false}
         closeOnClick
         rtl={false}
+        style={{ zIndex: 9999 }}
         pauseOnFocusLoss
         draggable
         pauseOnHover
@@ -43,12 +52,15 @@ function App() {
         transition={Zoom}
       />
       <Routes>
+        {/* basename="/cinema" */}
         <Route path='/' element={<LoginPage />} />
         <Route path='/booking' element={<BookingPage />} />
         <Route path='/user/booking' element={<UserBookingsTab />} />
         <Route path='/user/deposit' element={<DepositPage />} />
         <Route path='/user/deposit/history' element={<DepositHistoryPage />} />
         <Route path='/admin' element={<AdminPage />} />
+         {/* 🔥 GLOBAL 40 */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
   );
