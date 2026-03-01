@@ -1,29 +1,28 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 // Stores
 import { useMovieStore } from '@/stores/movie.store';
 import { useShowtimeStore } from '@/stores/showtime.store';
 import { useSeatStore, type Room } from '@/stores/seat.store';
 import { useBookingStore } from '@/stores/booking.store';
+import { useUserStore } from '@/stores/user.store';
 
-// Split Components
+// Components
 import { BookingFilters } from '@/pages/components/booking/BookingFilters';
 import { SeatMap } from '@/pages/components/booking/SeatMap';
 import { BookingSummary } from '@/pages/components/booking/BookingSummary';
-import { useUserStore } from '@/stores/user.store';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 
 export default function BookingPage() {
-  const currentUser = useUserStore((state) => state.currentUser);
-  // Zustand Store Hooks
+  const navigate = useNavigate();
+  const currentUser = useUserStore((s) => s.currentUser);
+
+  // Stores
   const { movies, fetchMovies, loading: moviesLoading } = useMovieStore();
-  const {
-    showtimes,
-    fetchShowtimes,
-    loading: showtimesLoading,
-  } = useShowtimeStore();
+  const { showtimes, fetchShowtimes, loading: showtimesLoading } =
+    useShowtimeStore();
   const {
     seats,
     bookedSeatIds,
@@ -36,86 +35,106 @@ export default function BookingPage() {
   } = useSeatStore();
   const { createBooking, loading: isBooking } = useBookingStore();
 
-  // Selection States
-  const [selectedMovie, setSelectedMovie] = useState<string>('');
+  // Local state
+  const [selectedMovie, setSelectedMovie] = useState('');
   const [selectedRoom, setSelectedRoom] = useState<Room | ''>('');
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState(''); // RAW HH:mm
+
+  /* =====================================
+      HELPERS
+  ===================================== */
 
   const formatApiDate = (dateVal: number | string) => {
     const d = new Date(dateVal);
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${year}-${month}-${day}`;
+    return `${d.getFullYear()}-${month}-${day}`;
   };
 
-  const navigate = useNavigate();
+  const formatTimeAMPM = (time24: string) => {
+    if (!time24) return '';
+    const [h, m] = time24.split(':');
+    let hour = Number(h);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12 || 12;
+    return `${hour}:${m} ${ampm}`;
+  };
+
+  /* =====================================
+      AUTH GUARD
+  ===================================== */
 
   useEffect(() => {
-    if (!currentUser) {
-      // Redirect to login if not authenticated
-      navigate('/');
-    }
-  }, [currentUser]);
+    if (!currentUser) navigate('/');
+  }, [currentUser, navigate]);
 
   useEffect(() => {
     fetchMovies();
     fetchShowtimes();
   }, [fetchMovies, fetchShowtimes]);
 
-  
-  /* ==========================================
-      REACTIVE WATERFALL (Auto-Selection)
-  ========================================== */
+  /* =====================================
+      DATA PIPELINE
+  ===================================== */
 
-  // A. Filter movies that actually have showtimes
+  // Movies that have showtimes
   const filteredMovies = useMemo(() => {
-    const scheduledIds = new Set(showtimes.map((s) => s.movieId));
-    return movies.filter((m) => scheduledIds.has(m.id));
-  }, [showtimes, movies]);
+    const ids = new Set(showtimes.map((s) => s.movieId));
+    return movies.filter((m) => ids.has(m.id));
+  }, [movies, showtimes]);
 
-  // B. Auto-select first Movie
+  // Auto select movie
   useEffect(() => {
-    if (filteredMovies.length > 0 && !selectedMovie) {
+    if (filteredMovies.length && !selectedMovie) {
       setSelectedMovie(String(filteredMovies[0].id));
     }
   }, [filteredMovies, selectedMovie]);
 
-  // C. Calculate available Rooms & Auto-select first
+  // Rooms
   const availableRooms = useMemo(() => {
-    const filtered = showtimes.filter(
-      (s) => String(s.movieId) === selectedMovie,
-    );
-    return Array.from(new Set(filtered.map((s) => s.room))) as Room[];
+    return Array.from(
+      new Set(
+        showtimes
+          .filter((s) => String(s.movieId) === selectedMovie)
+          .map((s) => s.room),
+      ),
+    ) as Room[];
   }, [selectedMovie, showtimes]);
 
   useEffect(() => {
-    if (availableRooms.length > 0) {
-      // If current room is no longer available for this movie, or nothing is selected
-      if (!selectedRoom || !availableRooms.includes(selectedRoom as Room)) {
-        setSelectedRoom(availableRooms[0]);
-      }
+    if (
+      availableRooms.length &&
+      (!selectedRoom || !availableRooms.includes(selectedRoom))
+    ) {
+      setSelectedRoom(availableRooms[0]);
     }
   }, [availableRooms, selectedRoom]);
 
-  // D. Calculate available Dates & Auto-select first
+  // Dates
   const availableDates = useMemo(() => {
-    const filtered = showtimes.filter(
-      (s) => String(s.movieId) === selectedMovie && s.room === selectedRoom,
+    return Array.from(
+      new Set(
+        showtimes
+          .filter(
+            (s) =>
+              String(s.movieId) === selectedMovie && s.room === selectedRoom,
+          )
+          .map((s) => formatApiDate(s.showDate)),
+      ),
     );
-    return Array.from(new Set(filtered.map((s) => formatApiDate(s.showDate))));
   }, [selectedMovie, selectedRoom, showtimes]);
 
   useEffect(() => {
-    if (availableDates.length > 0) {
-      if (!selectedDate || !availableDates.includes(selectedDate)) {
-        setSelectedDate(availableDates[0]);
-      }
+    if (
+      availableDates.length &&
+      (!selectedDate || !availableDates.includes(selectedDate))
+    ) {
+      setSelectedDate(availableDates[0]);
     }
   }, [availableDates, selectedDate]);
 
-  // E. Calculate available Times & Auto-select first
+  // Times (RAW + LABEL)
   const availableTimes = useMemo(() => {
     const filtered = showtimes.filter(
       (s) =>
@@ -123,22 +142,28 @@ export default function BookingPage() {
         s.room === selectedRoom &&
         formatApiDate(s.showDate) === selectedDate,
     );
-    return Array.from(new Set(filtered.map((s) => s.showTime.substring(0, 5))));
+
+    return Array.from(
+      new Map(
+        filtered.map((s) => {
+          const raw = s.showTime.substring(0, 5);
+          return [raw, formatTimeAMPM(raw)];
+        }),
+      ),
+    ).map(([raw, label]) => ({ raw, label }));
   }, [selectedMovie, selectedRoom, selectedDate, showtimes]);
 
   useEffect(() => {
-    if (availableTimes.length > 0) {
-      if (!selectedTime || !availableTimes.includes(selectedTime)) {
-        setSelectedTime(availableTimes[0]);
-      }
+    if (
+      availableTimes.length &&
+      (!selectedTime ||
+        !availableTimes.some((t) => t.raw === selectedTime))
+    ) {
+      setSelectedTime(availableTimes[0].raw);
     }
   }, [availableTimes, selectedTime]);
 
-  /* ==========================================
-      DATA LOADING SYNC
-  ========================================== */
-
-  // Find the exact showtime ID for the current combination
+  // Current showtime
   const currentShowtime = useMemo(() => {
     return showtimes.find(
       (s) =>
@@ -149,21 +174,24 @@ export default function BookingPage() {
     );
   }, [selectedMovie, selectedRoom, selectedDate, selectedTime, showtimes]);
 
-  // Sync Seats and Bookings with the selected Room/Showtime
+  /* =====================================
+      SEAT SYNC
+  ===================================== */
+
   useEffect(() => {
-    if (selectedRoom) fetchSeats(selectedRoom as Room);
+    if (selectedRoom) fetchSeats(selectedRoom);
   }, [selectedRoom, fetchSeats]);
 
   useEffect(() => {
     if (currentShowtime) {
       fetchBookedSeats(currentShowtime.id);
-      clearSelection(); // Clear previous user picks when session changes
+      clearSelection();
     }
   }, [currentShowtime, fetchBookedSeats, clearSelection]);
 
-  /* ==========================================
-      HANDLERS & RENDER
-  ========================================== */
+  /* =====================================
+      BOOKING
+  ===================================== */
 
   const totalPrice = useMemo(() => {
     return selectedSeats.reduce((sum, id) => {
@@ -173,45 +201,57 @@ export default function BookingPage() {
   }, [selectedSeats, seats]);
 
   const handleBooking = async () => {
-    if (!currentShowtime || selectedSeats.length === 0) return;
+    if (!currentShowtime || !selectedSeats.length) return;
 
     await createBooking({
       showtimeId: currentShowtime.id,
-      totalPrice,
       seatIds: selectedSeats,
+      totalPrice,
     });
 
     if (!useBookingStore.getState().error) {
       toast.success('Booking Confirmed!');
       fetchBookedSeats(currentShowtime.id);
+      currentUser.balance -= totalPrice;
       clearSelection();
     }
   };
 
+  /* =====================================
+      LOADING
+  ===================================== */
+
   if (moviesLoading || showtimesLoading) {
     return (
-      <div className='flex h-screen items-center justify-center'>
-        <Loader2 className='animate-spin text-primary w-12 h-12' />
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="animate-spin w-12 h-12 text-primary" />
       </div>
     );
   }
 
+  /* =====================================
+      RENDER
+  ===================================== */
+
   return (
-    <div className='grid lg:grid-cols-12 gap-8 p-6'>
-      <div className='lg:col-span-8 space-y-8'>
+    <div className="grid lg:grid-cols-12 gap-8 p-6">
+      <div className="lg:col-span-8 space-y-8">
         <BookingFilters
           movies={filteredMovies}
           selectedMovie={selectedMovie}
           onSelectMovie={setSelectedMovie}
           availableRooms={availableRooms}
           selectedRoom={selectedRoom}
-          onSelectRoom={(val) => setSelectedRoom(val as Room)}
+          onSelectRoom={(v) => setSelectedRoom(v as Room)}
           availableDates={availableDates}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
-          availableTimes={availableTimes}
-          selectedTime={selectedTime}
-          onSelectTime={setSelectedTime}
+          availableTimes={availableTimes.map((t) => t.label)}
+          selectedTime={formatTimeAMPM(selectedTime)}
+          onSelectTime={(label) => {
+            const found = availableTimes.find((t) => t.label === label);
+            if (found) setSelectedTime(found.raw);
+          }}
         />
 
         <SeatMap
@@ -219,23 +259,25 @@ export default function BookingPage() {
           bookedSeatIds={bookedSeatIds}
           selectedSeats={selectedSeats}
           isLoading={seatsLoading}
-          onSeatClick={(id) => !bookedSeatIds.includes(id) && selectSeat(id)}
+          onSeatClick={(id) =>
+            !bookedSeatIds.includes(id) && selectSeat(id)
+          }
         />
       </div>
 
-      <div className='lg:col-span-4'>
+      <div className="lg:col-span-4">
         <BookingSummary
           movieTitle={
             movies.find((m) => String(m.id) === selectedMovie)?.title || '—'
           }
           room={selectedRoom}
           date={selectedDate}
-          time={selectedTime}
+          time={formatTimeAMPM(selectedTime)}
           selectedSeats={selectedSeats}
           seats={seats}
           totalPrice={totalPrice}
           isBooking={isBooking}
-          isDisabled={!currentShowtime || selectedSeats.length === 0}
+          isDisabled={!currentShowtime || !selectedSeats.length}
           onBook={handleBooking}
         />
       </div>

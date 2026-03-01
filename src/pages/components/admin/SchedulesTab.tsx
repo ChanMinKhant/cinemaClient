@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import api from '@/lib/api';
-
+import { useEffect, useState, useMemo } from 'react';
+import { useShowtimeStore } from '@/stores/showtime.store';
+import { useMovieStore } from '@/stores/movie.store';
 import {
   Card,
   CardContent,
@@ -24,7 +24,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -33,366 +32,268 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Trash2, Plus, Pencil } from 'lucide-react';
-
-/* ======================
-    Types
-====================== */
-type ApiResponse<T> = {
-  success: boolean;
-  message: string;
-  data: T;
-};
-
-type Movie = {
-  id: number;
-  title: string;
-};
-
-type Showtime = {
-  id: number;
-  movieId: number;
-  room: string;
-  showDate: string | number; // timestamp or ISO string
-  showTime: string;
-};
+import { Trash2, Plus, Pencil, Loader2, CalendarDays, MapPin, Clock } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 const ROOM_OPTIONS = ['A', 'B', 'C'];
 
-/* ======================
-    Helper functions
-====================== */
-const formatDate = (value: string | number) => {
-  if (!value) return '—';
-  const date =
-    typeof value === 'number' ? new Date(value) : new Date(`${value}T00:00:00`);
-  return date.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  });
-};
-
-const formatDateSmart = (value: string | number) => {
-  const d =
-    typeof value === 'number' ? new Date(value) : new Date(value + 'T00:00:00');
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  today.setDate(today.getDate() + 1);
-  if (d.toDateString() === today.toDateString()) return 'Tomorrow';
-  return formatDate(value);
-};
-
-/* ======================
-    Component
-====================== */
 export default function SchedulesTab() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [showtimes, setShowtimes] = useState<Showtime[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  // 1. Consume Global Stores
+  const { showtimes, loading: sLoading, fetchShowtimes, addShowtime, updateShowtime, deleteShowtime } = useShowtimeStore();
+  const { movies, fetchMovies, loading: mLoading } = useMovieStore();
 
-  /* ===== Filters ===== */
+  // 2. Local UI State
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterMovie, setFilterMovie] = useState<string>('all');
   const [filterRoom, setFilterRoom] = useState<string>('all');
   const [filterDate, setFilterDate] = useState('');
 
-  /* ===== Form State ===== */
-  const [editing, setEditing] = useState<Showtime | null>(null);
-  const [movieId, setMovieId] = useState('');
-  const [room, setRoom] = useState('');
-  const [showDate, setShowDate] = useState('');
-  const [showTime, setShowTime] = useState('');
-
-  /* ===== Load Data ===== */
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [mRes, sRes] = await Promise.all([
-        api.get<ApiResponse<Movie[]>>('/movies'),
-        api.get<ApiResponse<Showtime[]>>('/showtimes'),
-      ]);
-      setMovies(mRes.data.data);
-      setShowtimes(sRes.data.data);
-    } catch (e) {
-      console.error('Failed to load schedules', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 3. Form State
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({
+    movieId: '',
+    room: '',
+    showDate: '',
+    showTime: '',
+  });
 
   useEffect(() => {
-    loadData();
-  }, []);
+    fetchShowtimes();
+    fetchMovies();
+  }, [fetchShowtimes, fetchMovies]);
 
-  /* ===== Form Helpers ===== */
-  const resetForm = () => {
-    setEditing(null);
-    setMovieId('');
-    setRoom('');
-    setShowDate('');
-    setShowTime('');
+  // Helpers for Date display
+  const formatDateSmart = (timestamp: number) => {
+    const d = new Date(timestamp);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    today.setDate(today.getDate() + 1);
+    if (d.toDateString() === today.toDateString()) return 'Tomorrow';
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const handleEditClick = (s: Showtime) => {
-    setEditing(s);
-    setMovieId(String(s.movieId));
-    setRoom(s.room);
-    setShowDate(
-      typeof s.showDate === 'number'
-        ? new Date(s.showDate).toISOString().slice(0, 10)
-        : s.showDate,
-    );
-    setShowTime(s.showTime.slice(0, 5));
+  const handleEditClick = (s: any) => {
+    setEditingId(s.id);
+    setForm({
+      movieId: String(s.movieId),
+      room: s.room,
+      showDate: new Date(s.showDate).toISOString().split('T')[0],
+      showTime: s.showTime.slice(0, 5),
+    });
     setIsDialogOpen(true);
   };
 
-  const saveShowtime = async () => {
-    if (!showDate || !showTime || !movieId || !room) {
-      alert('Please fill in all fields, including the date.');
+  const handleSave = async () => {
+    const { movieId, room, showDate, showTime } = form;
+    if (!movieId || !room || !showDate || !showTime) {
+      toast.error("Please fill all fields");
       return;
     }
 
+    // Convert string date to timestamp for the backend
+    const timestamp = new Date(showDate).getTime();
+    const formattedTime = showTime.length === 5 ? `${showTime}:00` : showTime;
+
     const payload = {
-      id: editing?.id,
       movieId: Number(movieId),
-      room,
-      showDate,
-      showTime: showTime.length === 5 ? `${showTime}:00` : showTime,
+      room: room as any,
+      showDate: timestamp,
+      showTime: formattedTime,
     };
 
     try {
-      if (editing) {
-        await api.put('/showtimes', payload);
+      if (editingId) {
+        await updateShowtime({ id: editingId, ...payload });
+        toast.success("Schedule updated");
       } else {
-        await api.post('/showtimes', payload);
+        await addShowtime(payload);
+        toast.success("Schedule created");
       }
       setIsDialogOpen(false);
-      resetForm();
-      loadData();
+      setEditingId(null);
+      setForm({ movieId: '', room: '', showDate: '', showTime: '' });
     } catch (e) {
-      console.error('Save failed', e);
+      toast.error("Operation failed");
     }
   };
 
-  const deleteShowtime = async (id: number) => {
-    try {
-      await api.delete(`/showtimes/${id}`);
-      setShowtimes((prev) => prev.filter((s) => s.id !== id));
-    } catch (e) {
-      console.error('Delete failed', e);
-    }
-  };
+  // 4. Memoized Filtering logic
+  const filteredShowtimes = useMemo(() => {
+    return showtimes.filter((s) => {
+      const matchMovie = filterMovie === 'all' || s.movieId === Number(filterMovie);
+      const matchRoom = filterRoom === 'all' || s.room === filterRoom;
+      const matchDate = !filterDate || new Date(s.showDate).toISOString().split('T')[0] === filterDate;
+      return matchMovie && matchRoom && matchDate;
+    });
+  }, [showtimes, filterMovie, filterRoom, filterDate]);
 
-  /* ===== Filtered showtimes ===== */
-  const filtered = showtimes.filter((s) => {
-    if (filterMovie !== 'all' && s.movieId !== Number(filterMovie))
-      return false;
-    if (filterRoom !== 'all' && s.room !== filterRoom) return false;
-    if (filterDate && s.showDate.toString().slice(0, 10) !== filterDate)
-      return false;
-    return true;
-  });
+  const isLoading = sLoading || mLoading;
 
-  /* ===== UI ===== */
   return (
-    <Card className='border-white/5 bg-black/40'>
-      <CardHeader className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'>
+    <Card className='border-white/5 bg-black/40 shadow-2xl animate-in fade-in duration-500'>
+      <CardHeader className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-6'>
         <div>
-          <CardTitle>Showtime Schedules</CardTitle>
-          <CardDescription>Manage movie schedules</CardDescription>
+          <CardTitle className="text-xl font-black uppercase italic tracking-tighter">Showtime Schedules</CardTitle>
+          <CardDescription className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Coordinate movie screenings & rooms</CardDescription>
         </div>
 
-        <Dialog
-          open={isDialogOpen}
-          onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
+        <Button 
+          className='gap-2 font-bold uppercase italic' 
+          onClick={() => {
+            setEditingId(null);
+            setForm({ movieId: '', room: '', showDate: '', showTime: '' });
+            setIsDialogOpen(true);
           }}
         >
-          <DialogTrigger asChild>
-            <Button
-              className='gap-2'
-              onClick={() => {
-                resetForm();
-                setIsDialogOpen(true);
-              }}
-            >
-              <Plus className='w-4 h-4' /> Add Schedule
-            </Button>
-          </DialogTrigger>
-
-          <DialogContent className='sm:max-w-[425px]'>
-            <DialogHeader>
-              <DialogTitle>
-                {editing ? 'Edit Schedule' : 'Add Schedule'}
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className='space-y-4 py-4'>
-              <div className='space-y-2'>
-                <Label>Movie</Label>
-                <Select value={movieId} onValueChange={setMovieId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select movie' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {movies.map((m) => (
-                      <SelectItem key={m.id} value={String(m.id)}>
-                        {m.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className='space-y-2'>
-                <Label>Room</Label>
-                <Select value={room} onValueChange={setRoom}>
-                  <SelectTrigger>
-                    <SelectValue placeholder='Select room' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROOM_OPTIONS.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        Room {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className='space-y-2'>
-                <Label htmlFor='date-input'>Show Date</Label>
-                <Input
-                  id='date-input'
-                  type='date'
-                  className='block w-full'
-                  value={showDate}
-                  onChange={(e) => setShowDate(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className='space-y-2'>
-                <Label>Show Time</Label>
-                <Input
-                  type='time'
-                  value={showTime}
-                  onChange={(e) => setShowTime(e.target.value)}
-                  required
-                />
-              </div>
-
-              <Button onClick={saveShowtime} className='w-full mt-4'>
-                {editing ? 'Update Schedule' : 'Save Schedule'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          <Plus size={16} /> Add Schedule
+        </Button>
       </CardHeader>
 
-      <CardContent>
-        {/* Filters */}
-        <div className='grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4'>
+      <CardContent className="pt-6">
+        {/* FILTERS BAR */}
+        <div className='grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6'>
           <Select value={filterMovie} onValueChange={setFilterMovie}>
-            <SelectTrigger>
-              <SelectValue placeholder='Movie' />
+            <SelectTrigger className="bg-white/5 border-white/10 h-10">
+              <SelectValue placeholder='Filter Movie' />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='all'>All Movies</SelectItem>
               {movies.map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  {m.title}
-                </SelectItem>
+                <SelectItem key={m.id} value={String(m.id)}>{m.title}</SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           <Select value={filterRoom} onValueChange={setFilterRoom}>
-            <SelectTrigger>
-              <SelectValue placeholder='Room' />
+            <SelectTrigger className="bg-white/5 border-white/10 h-10">
+              <SelectValue placeholder='Filter Room' />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value='all'>All Rooms</SelectItem>
               {ROOM_OPTIONS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  Room {r}
-                </SelectItem>
+                <SelectItem key={r} value={r}>Room {r}</SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <Input
-            type='date'
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-          />
+          <div className="relative">
+            <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+            <Input
+              type='date'
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="bg-white/5 border-white/10 pl-10 h-10"
+            />
+          </div>
+          
+          {(filterMovie !== 'all' || filterRoom !== 'all' || filterDate) && (
+            <Button variant="ghost" onClick={() => { setFilterMovie('all'); setFilterRoom('all'); setFilterDate(''); }} className="text-[10px] uppercase font-black text-slate-500">
+              Clear Filters
+            </Button>
+          )}
         </div>
 
-        {/* Table */}
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Movie</TableHead>
-              <TableHead>Room</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead className='text-right'>Action</TableHead>
-            </TableRow>
-          </TableHeader>
+        {/* SCHEDULE TABLE */}
+        <div className="rounded-xl border border-white/5 overflow-hidden">
+          <Table>
+            <TableHeader className="bg-white/5">
+              <TableRow className="border-white/5">
+                <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-400">Movie Title</TableHead>
+                <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</TableHead>
+                <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date</TableHead>
+                <TableHead className="text-[10px] font-black uppercase tracking-widest text-slate-400">Time</TableHead>
+                <TableHead className='text-right text-[10px] font-black uppercase tracking-widest text-slate-400'>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
 
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className='text-center'>
-                  Loading...
-                </TableCell>
-              </TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className='text-center'>
-                  No schedules found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className='font-medium'>
-                    {movies.find((m) => m.id === s.movieId)?.title || '—'}
-                  </TableCell>
-                  <TableCell>
-                    <span className='rounded-md bg-muted px-2 py-1 text-xs'>
-                      Room {s.room}
-                    </span>
-                  </TableCell>
-                  <TableCell>{formatDateSmart(s.showDate)}</TableCell>
-                  <TableCell>{s.showTime.slice(0, 5)}</TableCell>
-                  <TableCell className='text-right'>
-                    <div className='flex justify-end gap-1'>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        onClick={() => handleEditClick(s)}
-                      >
-                        <Pencil className='w-4 h-4' />
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        className='hover:text-destructive'
-                        onClick={() => deleteShowtime(s.id)}
-                      >
-                        <Trash2 className='w-4 h-4' />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+            <TableBody>
+              {isLoading && showtimes.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className='h-40 text-center'><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
+              ) : filteredShowtimes.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className='h-40 text-center text-slate-500 italic uppercase text-[10px] font-bold tracking-widest'>No schedules found for these filters</TableCell></TableRow>
+              ) : (
+                filteredShowtimes.map((s) => (
+                  <TableRow key={s.id} className="border-white/5 group hover:bg-white/[0.02] transition-colors">
+                    <TableCell className='font-bold text-white py-4'>
+                      {movies.find((m) => m.id === s.movieId)?.title || 'Unknown Movie'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 px-2 py-1 rounded bg-primary/10 border border-primary/20 w-fit">
+                        <MapPin size={10} className="text-primary" />
+                        <span className='text-[10px] font-black text-primary'>ROOM {s.room}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-slate-300 text-sm font-medium">
+                       {formatDateSmart(s.showDate)}
+                    </TableCell>
+                    <TableCell className="text-slate-300">
+                       <div className="flex items-center gap-2">
+                         <Clock size={12} className="text-slate-500" />
+                         <span className="font-mono">{s.showTime.slice(0, 5)}</span>
+                       </div>
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <div className='flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity'>
+                        <Button variant='ghost' size='icon' onClick={() => handleEditClick(s)} className="h-8 w-8 hover:bg-white/10"><Pencil size={14} /></Button>
+                        <Button 
+                          variant='ghost' 
+                          size='icon' 
+                          className='h-8 w-8 hover:text-destructive hover:bg-destructive/10' 
+                          onClick={() => { if(confirm("Delete this schedule?")) deleteShowtime(s.id); }}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
+
+      {/* MODAL FORM */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className='glass border-white/10 text-white'>
+          <DialogHeader>
+            <DialogTitle className="font-black italic uppercase">{editingId ? 'Edit Schedule' : 'Create New Schedule'}</DialogTitle>
+          </DialogHeader>
+
+          <div className='space-y-4 pt-4'>
+            <div className='space-y-2'>
+              <Label className="text-[10px] font-black uppercase text-slate-500">Target Movie</Label>
+              <Select value={form.movieId} onValueChange={(v) => setForm({...form, movieId: v})}>
+                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder='Select movie' /></SelectTrigger>
+                <SelectContent>{movies.map((m) => (<SelectItem key={m.id} value={String(m.id)}>{m.title}</SelectItem>))}</SelectContent>
+              </Select>
+            </div>
+
+            <div className='space-y-2'>
+              <Label className="text-[10px] font-black uppercase text-slate-500">Cinema Room</Label>
+              <Select value={form.room} onValueChange={(v) => setForm({...form, room: v})}>
+                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder='Select room' /></SelectTrigger>
+                <SelectContent>{ROOM_OPTIONS.map((r) => (<SelectItem key={r} value={r}>Room {r}</SelectItem>))}</SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className='space-y-2'>
+                <Label className="text-[10px] font-black uppercase text-slate-500">Date</Label>
+                <Input type='date' value={form.showDate} onChange={(e) => setForm({...form, showDate: e.target.value})} className="bg-white/5 border-white/10" />
+              </div>
+              <div className='space-y-2'>
+                <Label className="text-[10px] font-black uppercase text-slate-500">Time</Label>
+                <Input type='time' value={form.showTime} onChange={(e) => setForm({...form, showTime: e.target.value})} className="bg-white/5 border-white/10" />
+              </div>
+            </div>
+
+            <Button onClick={handleSave} className='w-full font-bold uppercase italic mt-4' disabled={isLoading}>
+              {isLoading ? <Loader2 className="animate-spin" /> : editingId ? 'Update Schedule' : 'Confirm Schedule'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

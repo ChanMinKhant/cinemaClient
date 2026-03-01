@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DepositsTab from './components/admin/DepositsTab';
 import { CloudCog } from 'lucide-react';
+import UsersTab from './components/admin/UsersTab';
 
 export default function AdminPage() {
   const currentUser = useUserStore((state) => state.currentUser);
@@ -36,9 +37,10 @@ export default function AdminPage() {
           <TabsTrigger value='schedules'>Schedules</TabsTrigger>
           <TabsTrigger value='bookings'>Bookings</TabsTrigger>
           <TabsTrigger value='deposits'>Deposits</TabsTrigger>
+          <TabsTrigger value='users'>Users</TabsTrigger>
         </TabsList>
 
-        {/* <TabsContent value='dashboard'>
+        <TabsContent value='dashboard'>
           <DashboardTab />
         </TabsContent>
 
@@ -52,10 +54,14 @@ export default function AdminPage() {
 
         <TabsContent value='bookings'>
           <BookingsTab />
-        </TabsContent> */}
+        </TabsContent>
 
         <TabsContent value='deposits'>
           <DepositsTab />
+        </TabsContent>
+
+        <TabsContent value='users'>
+          <UsersTab /> 
         </TabsContent>
       </Tabs>
     </div>

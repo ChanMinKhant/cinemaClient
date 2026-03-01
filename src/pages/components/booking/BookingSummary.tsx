@@ -1,9 +1,12 @@
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Wallet, History } from 'lucide-react'; 
+import { Loader2, Plus, Wallet, History, LogOut } from 'lucide-react'; 
 import type { Seat } from '@/stores/seat.store';
 import { useUserStore } from '@/stores/user.store';
-import { Link } from 'react-router-dom'; 
+import { Link, useNavigate } from 'react-router-dom'; 
+import api from '@/lib/api';
+import { toast } from 'react-toastify';
 
 interface BookingSummaryProps {
   movieTitle: string;
@@ -30,19 +33,51 @@ export function BookingSummary({
   isDisabled,
   onBook,
 }: BookingSummaryProps) {
+  const navigate = useNavigate();
   const currentUser = useUserStore((state) => state.currentUser);
+  const setCurrentUser = useUserStore((state) => state.setCurrentUser);
   
-  // Logic to check if user has enough money
   const userBalance = currentUser?.balance ?? 0;
   const isInsufficientBalance = userBalance < totalPrice;
 
+  // Logout Handler
+  const handleLogout = async () => {
+    try {
+      const res = await api.post('/auth/logout');
+      if (res.data.success) {
+        setCurrentUser(null); // Clear store
+        toast.success("Logged out successfully");
+        navigate('/login'); // Redirect to login
+      }
+    } catch (err) {
+      toast.error("Logout failed");
+    }
+  };
+
   return (
-    <Card className='glass border-primary/20 sticky top-24 shadow-2xl'>
+    <Card className='glass border-primary/20 sticky top-24 shadow-2xl overflow-hidden'>
+      {/* --- LOGOUT SECTION --- */}
+      <div className="bg-white/[0.03] border-b border-white/5 px-4 py-2 flex justify-between items-center">
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 italic">
+          Account: <span className="text-slate-300">{currentUser?.username || 'Guest'}</span>
+        </span>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleLogout}
+          className="h-7 px-2 text-[10px] font-black uppercase tracking-widest text-red-500/70 hover:text-red-500 hover:bg-red-500/10 gap-1.5 transition-all"
+        >
+          <LogOut size={12} />
+          Logout
+        </Button>
+      </div>
+
       <CardHeader>
         <CardTitle className="text-xl italic font-black uppercase tracking-tight">
           Summary
         </CardTitle>
       </CardHeader>
+      
       <CardContent className='space-y-4'>
         {/* Movie Info Section */}
         <div className='text-sm space-y-3'>
@@ -109,7 +144,7 @@ export function BookingSummary({
             </div>
           </div>
           {isInsufficientBalance && selectedSeats.length > 0 && (
-             <p className='text-[10px] text-destructive mt-1 text-right animate-pulse'>
+             <p className='text-[10px] text-destructive mt-1 text-right animate-pulse font-bold'>
                 Insufficient balance
              </p>
           )}
@@ -140,7 +175,6 @@ export function BookingSummary({
               )}
             </Button>
 
-            {/* View My Bookings Link - Good UX for returning users */}
             <Link to="/user/booking" className="block w-full">
               <Button 
                 variant="outline" 

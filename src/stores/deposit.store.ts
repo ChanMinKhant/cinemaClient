@@ -83,7 +83,7 @@ export const useDepositStore = create<DepositStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       // Using PUT for updates (admin processing)
-      const res = await api.put('/deposits', payload);
+      const res = await api.put('/admin/deposits', payload);
       if (res.data.success) {
         toast.success(`Deposit ${payload.status} successfully`);
         await get().fetchDeposits();

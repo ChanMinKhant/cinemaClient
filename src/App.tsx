@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { toast, ToastContainer, Zoom } from 'react-toastify';
 import UserBookingsTab from './pages/UserBookingsTab';
 import DepositPage from './pages/DepositPage';
+import DepositHistoryPage from './pages/DepositHistoryPage';
 
 function App() {
   const fetchMe = useUserStore((state) => state.fetchMe);
@@ -46,6 +47,7 @@ function App() {
         <Route path='/booking' element={<BookingPage />} />
         <Route path='/user/booking' element={<UserBookingsTab />} />
         <Route path='/user/deposit' element={<DepositPage />} />
+        <Route path='/user/deposit/history' element={<DepositHistoryPage />} />
         <Route path='/admin' element={<AdminPage />} />
       </Routes>
     </>
