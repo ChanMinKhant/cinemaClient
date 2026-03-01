@@ -23,7 +23,6 @@ export default function BookingPage() {
   const { movies, fetchMovies, loading: moviesLoading } = useMovieStore();
   const { showtimes, fetchShowtimes, loading: showtimesLoading } = useShowtimeStore();
   
-  // Updated SeatStore extraction to include our new states/methods
   const {
     seats,
     bookedSeatIds,
@@ -41,14 +40,13 @@ export default function BookingPage() {
 
   // Local state
   const [selectedMovie, setSelectedMovie] = useState('');
-  const [selectedRoom, setSelectedRoom] = useState<Room | ''>('');
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState<Room | ''>('');
   const [selectedTime, setSelectedTime] = useState(''); // RAW HH:mm
 
   /* =====================================
       HELPERS
   ===================================== */
-
   const formatApiDate = (dateVal: number | string) => {
     const d = new Date(dateVal);
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -68,7 +66,6 @@ export default function BookingPage() {
   /* =====================================
       AUTH GUARD
   ===================================== */
-
   useEffect(() => {
     if (!currentUser) navigate('/');
   }, [currentUser, navigate]);
@@ -95,56 +92,53 @@ export default function BookingPage() {
     }
   }, [filteredMovies, selectedMovie]);
 
-  // Rooms
-  const availableRooms = useMemo(() => {
+  // Available Dates (depends ONLY on movie)
+  const availableDates = useMemo(() => {
+    if (!selectedMovie) return [];
     return Array.from(
       new Set(
         showtimes
           .filter((s) => String(s.movieId) === selectedMovie)
-          .map((s) => s.room),
-      ),
-    ) as Room[];
+          .map((s) => formatApiDate(s.showDate))
+      )
+    );
   }, [selectedMovie, showtimes]);
 
   useEffect(() => {
-    if (
-      availableRooms.length &&
-      (!selectedRoom || !availableRooms.includes(selectedRoom))
-    ) {
-      setSelectedRoom(availableRooms[0]);
+    if (availableDates.length && (!selectedDate || !availableDates.includes(selectedDate))) {
+      setSelectedDate(availableDates[0]);
     }
-  }, [availableRooms, selectedRoom]);
+  }, [availableDates, selectedDate]);
 
-  // Dates
-  const availableDates = useMemo(() => {
+  // Available Rooms (depends on movie + date)
+  const availableRooms = useMemo(() => {
+    if (!selectedMovie || !selectedDate) return [];
     return Array.from(
       new Set(
         showtimes
           .filter(
             (s) =>
-              String(s.movieId) === selectedMovie && s.room === selectedRoom,
+              String(s.movieId) === selectedMovie &&
+              formatApiDate(s.showDate) === selectedDate
           )
-          .map((s) => formatApiDate(s.showDate)),
-      ),
-    );
-  }, [selectedMovie, selectedRoom, showtimes]);
+          .map((s) => s.room)
+      )
+    ) as Room[];
+  }, [selectedMovie, selectedDate, showtimes]);
 
   useEffect(() => {
-    if (
-      availableDates.length &&
-      (!selectedDate || !availableDates.includes(selectedDate))
-    ) {
-      setSelectedDate(availableDates[0]);
+    if (availableRooms.length && (!selectedRoom || !availableRooms.includes(selectedRoom))) {
+      setSelectedRoom(availableRooms[0]);
     }
-  }, [availableDates, selectedDate]);
+  }, [availableRooms, selectedRoom]);
 
-  // Times (RAW + LABEL)
+  // Available Times (depends on movie + date + room)
   const availableTimes = useMemo(() => {
     const filtered = showtimes.filter(
       (s) =>
         String(s.movieId) === selectedMovie &&
-        s.room === selectedRoom &&
-        formatApiDate(s.showDate) === selectedDate,
+        formatApiDate(s.showDate) === selectedDate &&
+        s.room === selectedRoom
     );
 
     return Array.from(
@@ -152,18 +146,17 @@ export default function BookingPage() {
         filtered.map((s) => {
           const raw = s.showTime.substring(0, 5);
           return [raw, formatTimeAMPM(raw)];
-        }),
-      ),
+        })
+      )
     ).map(([raw, label]) => ({ raw, label }));
-  }, [selectedMovie, selectedRoom, selectedDate, showtimes]);
+  }, [selectedMovie, selectedDate, selectedRoom, showtimes]);
 
   useEffect(() => {
     if (
       availableTimes.length &&
-      (!selectedTime ||
-        !availableTimes.some((t) => t.raw === selectedTime))
+      (!selectedTime || !availableTimes.some((t) => t.raw === selectedTime))
     ) {
-      setSelectedTime(availableTimes[0].raw);
+      setSelectedTime(availableTimes[0]?.raw || '');
     }
   }, [availableTimes, selectedTime]);
 
@@ -172,23 +165,21 @@ export default function BookingPage() {
     return showtimes.find(
       (s) =>
         String(s.movieId) === selectedMovie &&
-        s.room === selectedRoom &&
         formatApiDate(s.showDate) === selectedDate &&
-        s.showTime.startsWith(selectedTime),
+        s.room === selectedRoom &&
+        s.showTime.startsWith(selectedTime)
     );
-  }, [selectedMovie, selectedRoom, selectedDate, selectedTime, showtimes]);
+  }, [selectedMovie, selectedDate, selectedRoom, selectedTime, showtimes]);
 
   /* =====================================
       SEAT SYNC
   ===================================== */
-
   useEffect(() => {
     if (selectedRoom) fetchSeats(selectedRoom);
   }, [selectedRoom, fetchSeats]);
 
   useEffect(() => {
     if (currentShowtime) {
-      // Fetch both general booked seats and specifically the user's booked seats
       fetchBookedSeats(currentShowtime.id);
       fetchMyBookedSeats(currentShowtime.id);
       clearSelection();
@@ -198,7 +189,6 @@ export default function BookingPage() {
   /* =====================================
       BOOKING
   ===================================== */
-
   const totalPrice = useMemo(() => {
     return selectedSeats.reduce((sum, id) => {
       const seat = seats.find((s) => s.id === id);
@@ -217,7 +207,6 @@ export default function BookingPage() {
 
     if (!useBookingStore.getState().error) {
       toast.success('Booking Confirmed!');
-      // Re-fetch both lists so the map updates to show their newly booked seats in the correct color
       fetchBookedSeats(currentShowtime.id);
       fetchMyBookedSeats(currentShowtime.id);
       currentUser.balance -= totalPrice;
@@ -226,9 +215,33 @@ export default function BookingPage() {
   };
 
   /* =====================================
+      HANDLERS (Priority Safe)
+  ===================================== */
+  const handleSelectMovie = (val: string) => {
+    setSelectedMovie(val);
+    setSelectedDate('');
+    setSelectedRoom('');
+    setSelectedTime('');
+  };
+
+  const handleSelectDate = (val: string) => {
+    setSelectedDate(val);
+    setSelectedRoom('');
+    setSelectedTime('');
+  };
+
+  const handleSelectRoom = (val: Room) => {
+    setSelectedRoom(val);
+    setSelectedTime('');
+  };
+
+  const handleSelectTime = (val: string) => {
+    setSelectedTime(val);
+  };
+
+  /* =====================================
       LOADING
   ===================================== */
-
   if (moviesLoading || showtimesLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -240,45 +253,40 @@ export default function BookingPage() {
   /* =====================================
       RENDER
   ===================================== */
-
   return (
     <div className="grid lg:grid-cols-12 gap-8 p-6">
       <div className="lg:col-span-8 space-y-8">
         <BookingFilters
           movies={filteredMovies}
           selectedMovie={selectedMovie}
-          onSelectMovie={setSelectedMovie}
-          availableRooms={availableRooms}
-          selectedRoom={selectedRoom}
-          onSelectRoom={(v) => setSelectedRoom(v as Room)}
+          onSelectMovie={handleSelectMovie}
           availableDates={availableDates}
           selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
+          onSelectDate={handleSelectDate}
+          availableRooms={availableRooms}
+          selectedRoom={selectedRoom}
+          onSelectRoom={handleSelectRoom}
           availableTimes={availableTimes.map((t) => t.label)}
           selectedTime={formatTimeAMPM(selectedTime)}
           onSelectTime={(label) => {
             const found = availableTimes.find((t) => t.label === label);
-            if (found) setSelectedTime(found.raw);
+            if (found) handleSelectTime(found.raw);
           }}
         />
 
         <SeatMap
           seats={seats}
           bookedSeatIds={bookedSeatIds}
-          myBookedSeatIds={myBookedSeatIds} // Passed down to highlight user's seats
+          myBookedSeatIds={myBookedSeatIds}
           selectedSeats={selectedSeats}
           isLoading={seatsLoading}
-          onSeatClick={(id) =>
-            !bookedSeatIds.includes(id) && selectSeat(id)
-          }
+          onSeatClick={(id) => !bookedSeatIds.includes(id) && selectSeat(id)}
         />
       </div>
 
       <div className="lg:col-span-4">
         <BookingSummary
-          movieTitle={
-            movies.find((m) => String(m.id) === selectedMovie)?.title || '—'
-          }
+          movieTitle={movies.find((m) => String(m.id) === selectedMovie)?.title || '—'}
           room={selectedRoom}
           date={selectedDate}
           time={formatTimeAMPM(selectedTime)}
